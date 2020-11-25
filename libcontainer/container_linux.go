@@ -25,6 +25,7 @@ import (
 	"github.com/opencontainers/runc/libcontainer/intelrdt"
 	"github.com/opencontainers/runc/libcontainer/system"
 	"github.com/opencontainers/runc/libcontainer/utils"
+	"github.com/opencontainers/runc/libcontainer/native"
 	"github.com/opencontainers/runtime-spec/specs-go"
 
 	"github.com/checkpoint-restore/go-criu/v4"
@@ -993,6 +994,14 @@ func (c *linuxContainer) Checkpoint(criuOpts *CriuOpts) error {
 		OrphanPtsMaster: proto.Bool(true),
 		AutoDedup:       proto.Bool(criuOpts.AutoDedup),
 		LazyPages:       proto.Bool(criuOpts.LazyPages),
+		GhostLimit:      proto.Uint32(2097152),
+		LibDir:          proto.String("/opt/memverge/lib64/mvsnap/"),
+		MvmSock:         proto.String("/tmp/dpme_daemon.0"),
+		BypassMapping:   proto.String(native.GetMappingRange(c.initProcess.pid())),
+	}
+
+	if criuOpts.LeaveRunning {
+		defer native.RestoreNormalMode(c.initProcess.pid())
 	}
 
 	c.handleCriuConfigurationFile(&rpcOpts)
@@ -1348,6 +1357,9 @@ func (c *linuxContainer) Restore(process *Process, criuOpts *CriuOpts) error {
 			OrphanPtsMaster: proto.Bool(true),
 			AutoDedup:       proto.Bool(criuOpts.AutoDedup),
 			LazyPages:       proto.Bool(criuOpts.LazyPages),
+			GhostLimit:      proto.Uint32(2097152),
+			LibDir:          proto.String("/opt/memverge/lib64/mvsnap/"),
+			MvmSock:         proto.String("/tmp/dpme_daemon.0"),
 		},
 	}
 
@@ -1550,6 +1562,9 @@ func (c *linuxContainer) criuSwrk(process *Process, req *criurpc.CriuReq, opts *
 	// should be empty. For older CRIU versions it still will be
 	// available but empty. criurpc.CriuReqType_VERSION actually
 	// has no req.GetOpts().
+
+	// the proto file has changed, we need to skip first 3 fields
+	skipCnt := 0
 	if !(req.GetType() == criurpc.CriuReqType_FEATURE_CHECK ||
 		req.GetType() == criurpc.CriuReqType_VERSION) {
 
@@ -1558,7 +1573,8 @@ func (c *linuxContainer) criuSwrk(process *Process, req *criurpc.CriuReq, opts *
 		for i := 0; i < v.NumField(); i++ {
 			st := v.Type()
 			name := st.Field(i).Name
-			if strings.HasPrefix(name, "XXX_") {
+			if skipCnt < 3 {
+				skipCnt++
 				continue
 			}
 			value := val.MethodByName("Get" + name).Call([]reflect.Value{})
