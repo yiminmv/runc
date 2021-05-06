@@ -86,7 +86,7 @@ func main() {
 		},
 		cli.StringFlag{
 			Name:  "log",
-			Value: "",
+			Value: "/tmp/runc.log",
 			Usage: "set the log file path where internal debug information is written",
 		},
 		cli.StringFlag{
@@ -186,9 +186,9 @@ func createLogConfig(context *cli.Context) logs.Config {
 		LogFilePath: logFilePath,
 		LogFormat:   context.GlobalString("log-format"),
 	}
-	if context.GlobalBool("debug") {
-		config.LogLevel = logrus.DebugLevel
-	}
+	//if context.GlobalBool("debug") {
+	config.LogLevel = logrus.DebugLevel
+	//}
 
 	return config
 }
